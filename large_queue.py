@@ -1,4 +1,3 @@
-# large_queue.py
 
 """
     LargeQueue
@@ -96,9 +95,9 @@ class LargeQueue(object):
         return int(time.time() * 1000)
 
     def __init__(self):
-        '''
+        """
         The null constructor.
-        '''
+        """
         self.client = None
         self.namespace = None
         self.name = None
@@ -108,13 +107,13 @@ class LargeQueue(object):
 
     @staticmethod
     def _get_metadata(client, namespace, q_name):
-        '''
+        """
         Get the metadata record.
         :param client: client object returned by aerospike.connect()
         :param namespace: namespace where the queue records are stored
         :param q_name: name of the queue, used as the "set" name
         :return: metadata record if queue exists, otherwise None
-        '''
+        """
         metadata_key = (namespace, q_name, LargeQueue.META_REC_KEY)
         try:
             (key, meta, record) = client. get(metadata_key)
@@ -123,10 +122,10 @@ class LargeQueue(object):
         return record
 
     def get_queue_info(self):
-        '''
+        """
         Get queue info.
         :return: a dict with externally visible attributes of the queue
-        '''
+        """
         if not self.initialized:
             return None
         record = LargeQueue._get_metadata(self.client, self.namespace, self.name)
@@ -137,10 +136,10 @@ class LargeQueue(object):
                  'tail-offset': long(record['tail-offset']) }
 
     def _create_metadata_record(self):
-        '''
+        """
         Create a metadata record for a new queue.
         :throws: ASAborted('Queue already exists')
-        '''
+        """
         # create the metadata record
         write_policy = { 'exists': aerospike.POLICY_EXISTS_CREATE,
                          'key': aerospike.POLICY_KEY_SEND }
@@ -160,9 +159,9 @@ class LargeQueue(object):
         return
 
     def _create_buf_records(self):
-        '''
+        """
         Create buffer records for a new queue.
-        '''
+        """
         # insert buffer records
         write_policy = { 'exists': aerospike.POLICY_EXISTS_CREATE_OR_REPLACE,
                          'key': aerospike.POLICY_KEY_SEND }
@@ -176,13 +175,13 @@ class LargeQueue(object):
         return
 
     def _reset_fencing_marks(self):
-        '''
+        """
         Reset the fencing marker in buffer records when the fencing counter in metadata record wraps around to 0.
         While like to be very infrequent, if at all necessaary, operation (a long fencing counter should make it
         unnecessary, but predexp currently only seems to work with int), it is critical for it to succeed when called.
         If it fails for some reason, enqueue operations will fail due to fencing error until the fencing marker is
         reset.
-        '''
+        """
         write_policy = { 'exists': aerospike.POLICY_EXISTS_UPDATE }
         for i in range(self.num_buf_recs):
             buf_key = (self.namespace, self.name, LargeQueue._buf_record_key(i))
@@ -194,7 +193,7 @@ class LargeQueue(object):
         return
 
     def create_new_queue(self, client, namespace, q_name, max_size, slots_per_rec):
-        '''
+        """
         Create a new queue using the input parameters.
         :param client: client object returned by aerospike.connect()
         :param namespace: namespace in which the queue records are to be stored
@@ -202,7 +201,7 @@ class LargeQueue(object):
         :param max_size: maximum number of entries to be held in the queue
         :param slots_per_rec: number of entries per record, depending on the size of entry. must be carefully
             selected otherwise record overflow can result at runtime.
-        '''
+        """
         self.client = client
         self.namespace = namespace
         self.name = q_name
@@ -214,12 +213,12 @@ class LargeQueue(object):
         return
 
     def initialize_existing_queue(self, client, namespace, q_name):
-        '''
+        """
         Initialize an existing queue in the given namespace with the given name.
         :param client: client object returned by aerospike.connect().
         :param namespace: namespace in which the queue is stored
         :param q_name: name of the queue
-        '''
+        """
         metadata = LargeQueue._get_metadata(client, namespace, q_name)
         if metadata is None:
             raise ASAborted('Queue does not exist')
@@ -232,7 +231,7 @@ class LargeQueue(object):
         return
 
     def _lock(self, txn_id, op):
-        '''
+        """
         Atomically check if the queue is locked, break an expired lock, lock the queue and
         set the lock-owner and lock-time, and if the operation is enqueue, also increment and
         return the fencing counter.
@@ -241,7 +240,7 @@ class LargeQueue(object):
         :param op: enqueue or dequeue
         :return: dict with head and tail positions on success
             throws ASAborted('Failed to acquire lock') on failure
-        '''
+        """
         metadata_key = (self.namespace, self.name, LargeQueue.META_REC_KEY)
         for _ in range(LargeQueue.LOCK_MAX_RETRIES):
             curr_time_ms = LargeQueue._curr_time_milliseconds()
@@ -269,14 +268,14 @@ class LargeQueue(object):
         raise ASAborted('Failed to acquire lock')
 
     def _commit_release(self, txn_id, new_head_offset=None, new_tail_offset=None):
-        '''
+        """
         If the lock is still held by this requester (txn-id), update the new positions of head/tail and r
         elease the lock. Otherwise abort the request as timed out.
         :param txn_id: lock owner id, must be unique among concurrent requests
         :param new_head_offset: new head offset to be updated
         :param new_tail_offset: new tail offset to be updated
         :return: throws ASAborted('Timed out')
-        '''
+        """
         metadata_key = (self.namespace, self.name, LargeQueue.META_REC_KEY)
         predexps = [ predexp.integer_bin("locked"),
                      predexp.integer_value(1),
@@ -299,42 +298,42 @@ class LargeQueue(object):
         return
 
     def _get_entry_location(self, entry_offset):
-        '''
+        """
         Get the record index and entry index within the record, given the entry's offset.
         :param entry_offset: offset of the entry
         :return: tuple (record index, entry index)
-        '''
+        """
         buf_rec_index = int(entry_offset / self.slots_per_rec) % self.num_buf_recs
         entry_index = entry_offset % self.slots_per_rec
         return buf_rec_index, entry_index
 
     def _queue_is_full(self, head_offset, tail_offset):
-        '''
+        """
         Check if the queue is full.
         :param head_offset: Offset of the head entry.
         :param tail_offset: Offset of the tail entry (next added entry).
         :return: True if full, False otherwise
-        '''
+        """
         num_entries = tail_offset - head_offset
         return num_entries == self.num_buf_recs * self.slots_per_rec
 
     def _queue_is_empty(self, head_offset, tail_offset):
-        '''
+        """
         Check if the queue is empty.
         :param head_offset: Offset of the head entry.
         :param tail_offset: Offset of the tail entry (next added entry).
         :return: True if empty, False otherwise
-         '''
+        """
         return 0 == tail_offset - head_offset
 
     def enqueue(self, entry, txn_id, overwrite_if_full=False):
-        '''
+        """
         Append a new entry to the queue. Fails if the queue lock cannot be acquired. Can fail if the queue is full.
         :param entry: new entry to be enqueued
         :param txn_id: lock owner id, must be unique among concurrent requests
         :param overwrite_if_full: flag indicating if the head position should be overwritten if the queue is full
         :return: Offset position of the enqueued entry. throws: ASAborted('Queue is full'), ASAborted('Timed out')
-        '''
+        """
         q_state = self._lock(txn_id, LargeQueue.Ops.Enqueue)
         # compute the record and list indices
         head_offset = long(q_state['head-offset'])
@@ -363,12 +362,12 @@ class LargeQueue(object):
         return tail_offset
 
     def dequeue(self, txn_id):
-        '''
+        """
         Dequee and return the entry at the head of the queue. If the queue is empty, returns None.
         :param txn_id: lock owner id, must be unique among concurrent requests
         :return: dict containing entry and offset for the entry at the head of the queue,
             or None if the queue is empty
-        '''
+        """
         q_state = self._lock(txn_id, LargeQueue.Ops.Dequeue)
         # compute the record and list indices
         head_offset = long(q_state['head-offset'])
@@ -515,7 +514,7 @@ def main():
             print('aborted: reason: {}'.format(ex.reason))
             break
     exit(0)
-    
+
 
 if __name__ == "__main__":
     main()
