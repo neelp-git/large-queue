@@ -1,3 +1,4 @@
+# large_queue.py
 
 """
     LargeQueue
@@ -176,20 +177,22 @@ class LargeQueue(object):
 
     def _reset_fencing_marks(self):
         """
-        Reset the fencing marker in buffer records when the fencing counter in metadata record wraps around to 0.
-        While like to be very infrequent, if at all necessaary, operation (a long fencing counter should make it
-        unnecessary, but predexp currently only seems to work with int), it is critical for it to succeed when called.
+        Reset the fencing marker in buffer and metadata records when the fencing counter in metadata record wraps
+        around to a non-positive value. While like to be very infrequent, if at all necessary, operation
+        (a long fencing counter should make it unnecessary), it is critical for it to succeed.
         If it fails for some reason, enqueue operations will fail due to fencing error until the fencing marker is
         reset.
         """
         write_policy = { 'exists': aerospike.POLICY_EXISTS_UPDATE }
-        for i in range(self.num_buf_recs):
-            buf_key = (self.namespace, self.name, LargeQueue._buf_record_key(i))
-            try:
+        try:
+            for i in range(self.num_buf_recs):
+                buf_key = (self.namespace, self.name, LargeQueue._buf_record_key(i))
                 self.client. put(buf_key, {'fencing_mark': 0}, write_policy)
-            except ex:
-                print('LargeQueue: critical error. Failure during reset of fencing marks', ex)
-                raise ex
+            metadata_key = (self.namespace, self.name, LargeQueue.META_REC_KEY)
+            self.client.put(metadata_key, {'fencing-ctr': 0}, write_policy)
+        except ex:
+            print('LargeQueue: critical error. Failure during reset of fencing marks', ex)
+            raise ex
         return
 
     def create_new_queue(self, client, namespace, q_name, max_size, slots_per_rec):
@@ -329,6 +332,7 @@ class LargeQueue(object):
     def enqueue(self, entry, txn_id, overwrite_if_full=False):
         """
         Append a new entry to the queue. Fails if the queue lock cannot be acquired. Can fail if the queue is full.
+        If the fencing counter has wrapped around, reset all fencing values.
         :param entry: new entry to be enqueued
         :param txn_id: lock owner id, must be unique among concurrent requests
         :param overwrite_if_full: flag indicating if the head position should be overwritten if the queue is full
@@ -339,7 +343,8 @@ class LargeQueue(object):
         head_offset = long(q_state['head-offset'])
         tail_offset = long(q_state['tail-offset'])
         fencing_ctr = q_state['fencing-ctr']
-        if fencing_ctr == 0:
+        # if the fencing counter has a non-positive value, it has wrapped around past the max value; reset
+        if fencing_ctr <= 0:
             self._reset_fencing_marks()
         buf_rec_index, entry_index = self._get_entry_location(tail_offset) # tail points to where the new entry will go
         entry_val = {'offset': tail_offset, 'entry': entry}
@@ -518,4 +523,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
     
