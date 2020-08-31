@@ -437,12 +437,18 @@ def main():
     # so we can use the same txn_id in the following operations
     txn_id = 1
     msg = {'msg-id': 100, 'msg-text': 'The school is closed for summer.'}
-    offset = msg_queue.enqueue(msg, txn_id)
-    print('message 100 added at offset {}'.format(offset))
+    try:
+        offset = msg_queue.enqueue(msg, txn_id)
+        print('message 100 added at offset {}'.format(offset))
+    except ASAborted as ex:
+        print('enqueue failed, reason: {}'.format(ex.reason))
 
     msg = {'msg-id': 101, 'msg-text': 'Have a nice summer!'}
-    offset = msg_queue.enqueue(msg, txn_id)
-    print('message 101 added at offset {}'.format(offset))
+    try:
+        offset = msg_queue.enqueue(msg, txn_id)
+        print('message 101 added at offset {}'.format(offset))
+    except ASAborted as ex:
+        print('enqueue failed, reason: {}'.format(ex.reason))
 
     # Get queue status
     q_info = msg_queue.get_queue_info()
@@ -454,8 +460,11 @@ def main():
     print('entry at offset {}: {}'.format(offset, msg_entry))
 
     # Pop the head entry
-    msg_entry = msg_queue.dequeue(txn_id)
-    print('dequeued entry: {}'.format(msg_entry))
+    try:
+        msg_entry = msg_queue.dequeue(txn_id)
+        print('dequeued entry: {}'.format(msg_entry))
+    except ASAborted as ex:
+        print('dequeue failed, reason: {}'.format(ex.reason))
 
     # end status of the queue
     q_info = msg_queue.get_queue_info()
@@ -472,14 +481,24 @@ def main():
 
     # dequeue - empty queue
     txn_id = 111
-    entry = test_queue.dequeue(txn_id)
-    print('found: {}'.format(entry))
+    try:
+        entry = test_queue.dequeue(txn_id)
+        print('found: {}'.format(entry))
+    except ASAborted as ex:
+        print('dequeue failed, reason: {}'.format(ex.reason))
 
     # enqueue/dequeue
     entry = 999
-    offset = test_queue.enqueue(entry, txn_id)
-    out = test_queue.dequeue(txn_id)
-    print('added: {} at offset: {}, dequeued: {}'.format(entry, offset, out))
+    try:
+        offset = test_queue.enqueue(msg, txn_id)
+        print('added: {} at offset: {}'.format(entry, offset))
+    except ASAborted as ex:
+        print('enqueue failed, reason: {}'.format(ex.reason))
+    try:
+        out = test_queue.dequeue(txn_id)
+        print('dequeued: {}'.format(out))
+    except ASAborted as ex:
+        print('dequeue failed, reason: {}'.format(ex.reason))
 
     # add 20 items
     print('adding without overwrite')
